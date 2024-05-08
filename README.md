@@ -1,4 +1,4 @@
-# Text Summarization and Translation App
+# Summarization and Translation of Text
 
 This Streamlit app provides options to summarize and translate text.
 
