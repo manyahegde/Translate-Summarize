@@ -1,47 +1,97 @@
-# Import necessary libraries
+from googletrans import Translator
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+import streamlit as st
+import nltk
 
-import newspaper
-from newspaper import Article
-from transformers import pipeline
-import gradio as gr
+def download_nltk_resources():
+    nltk.download('punkt')
+    nltk.download('stopwords')
 
-# Function to scrape and summarize news articles
-def summarize_news(topic):
-    # Scrape articles from Al Jazeera
-    articles = []
-    aljazeera_url = f"https://www.aljazeera.com/topics/{topic}"
-    paper = newspaper.build(aljazeera_url, memoize_articles=False)
-    for article in paper.articles:
-        try:
-            article.download()
-            article.parse()
-            articles.append(article.text)
-        except Exception as e:
-            print(f"Error scraping article: {e}")
+def summarize_text(text):
+    stop_words = set(stopwords.words("english"))
+    words = word_tokenize(text)
+    
+    # Creating a frequency table to keep the score of each word
+    freq_table = dict()
+    for word in words:
+        word = word.lower()
+        if word not in stop_words:
+            if word in freq_table:
+                freq_table[word] += 1
+            else:
+                freq_table[word] = 1
+    
+    # Creating a dictionary to keep the score of each sentence
+    sentences = sent_tokenize(text)
+    sentence_value = dict()
 
-    # Translate articles to English
-    translator = pipeline("translation", model="Helsinki-NLP/opus-mt-ar-en")
-    translated_articles = [translator(article, max_length=512)[0]['translation_text'] for article in articles]
+    for sentence in sentences:
+        for word, freq in freq_table.items():
+            if word in sentence.lower():
+                if sentence in sentence_value:
+                    sentence_value[sentence] += freq
+                else:
+                    sentence_value[sentence] = freq
 
-    # Summarize articles
-    summarizer = pipeline("summarization")
-    summaries = [summarizer(article, max_length=150, min_length=50, do_sample=False)[0]['summary_text'] for article in translated_articles]
+    sum_values = 0
+    for sentence in sentence_value:
+        sum_values += sentence_value[sentence]
 
-    return summaries
+    # Average value of a sentence from the original text
+    average = int(sum_values / len(sentence_value))
 
-# Interface for the web app
-interface = gr.Interface(
-    fn=summarize_news,
-    inputs="text",
-    outputs="text",
-    title="News Summarizer",
-    description="Enter a topic to summarize news articles from Al Jazeera.",
-    examples=[
-        ["Afghanistan"],
-        ["Syria"],
-        ["COVID-19"]
-    ]
-)
+    # Storing sentences into our summary.
+    summary = ''
+    for sentence in sentences:
+        if (sentence in sentence_value) and (sentence_value[sentence] > (1.2 * average)):
+            summary += " " + sentence
 
-# Launch the web app
-interface.launch()
+    return summary
+
+# Function to translate text
+def translate_text(text, src_language, dest_language):
+    if not text:
+        return "Please enter some text."
+    translator = Translator()
+    translation = translator.translate(text, src=src_language, dest=dest_language)
+    return translation.text
+
+def main():
+    download_nltk_resources()
+    st.title("Text Summarization and Translation App")
+    user_text = st.text_area("Enter the text you want to process:")
+
+    option = st.selectbox("Choose an option:", ["Translate only", "Summarize only", "Summarize and translate"])
+
+    if option == "Translate only":
+        dest_lang = st.selectbox("Select the language you want to translate to:", ["English", "Kannada", "Hindi"])
+        if st.button("Translate"):
+            dest_lang_code = {"English": "en", "Kannada": "kn", "Hindi": "hi"}
+            translated_text = translate_text(user_text, 'en', dest_lang_code[dest_lang])
+            st.subheader("Translated Text:")
+            st.write(translated_text)
+    elif option == "Summarize only":
+        if st.button("Summarize"):
+            summary = summarize_text(user_text)
+            if summary:
+                st.subheader("Summarized Text:")
+                st.write(summary)
+            else:
+                st.write("There is not enough text to summarize.")
+    elif option == "Summarize and translate":
+        dest_lang = st.selectbox("Select the language you want to translate to:", ["Kannada", "Hindi"])
+        if st.button("Summarize and Translate"):
+            summary = summarize_text(user_text)
+            if not summary:
+                st.write("There is not enough text to summarize.")
+            else:
+                dest_lang_code = {"Kannada": "kn", "Hindi": "hi"}
+                translated_summary = translate_text(summary, 'en', dest_lang_code[dest_lang])
+                st.subheader("Summarized Text:")
+                st.write(summary)
+                st.subheader("Translated Text:")
+                st.write(translated_summary)
+
+if __name__ == "__main__":
+    main()
